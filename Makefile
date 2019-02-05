@@ -22,7 +22,24 @@ MKFILE_DIR := $(patsubst %/,%,$(dir $(MKFILE_PATH)))
 #   UNIX: /usr/local
 #   Windows: c:/Program Files/${PROJECT_NAME}
 
+# Options
+#
+#   SUDO: sudo command
+#   CAM_MODELS: cmake build with -DWITH_CAM_MODELS=ON
+#
+# e.g. make [TARGET] SUDO=
+# e.g. make [TARGET] CAM_MODELS=1
+
 SUDO ?= sudo
+
+CAM_MODELS ?=
+
+CMAKE_BUILD_EXTRA_OPTIONS :=
+ifeq ($(CAM_MODELS),)
+	CMAKE_BUILD_EXTRA_OPTIONS := $(CMAKE_BUILD_EXTRA_OPTIONS) -DWITH_CAM_MODELS=OFF
+else
+	CMAKE_BUILD_EXTRA_OPTIONS := $(CMAKE_BUILD_EXTRA_OPTIONS) -DWITH_CAM_MODELS=ON
+endif
 
 .DEFAULT_GOAL := all
 
@@ -76,6 +93,18 @@ submodules:
 
 .PHONY: submodules
 
+# 3rdparty
+
+ceres:
+	@$(call echo,Make $@)
+	@$(call cmake_build,./3rdparty/ceres-solver-1.11.0/_build,.., \
+		-DCMAKE_INSTALL_PREFIX=$(MKFILE_DIR)/3rdparty/ceres \
+		-DGFLAGS_PREFER_EXPORTED_GFLAGS_CMAKE_CONFIGURATION=OFF \
+		-DMINIGLOG=ON)
+	@cd ./3rdparty/ceres-solver-1.11.0/_build; make install
+
+.PHONY: ceres
+
 # init
 
 init:
@@ -88,10 +117,13 @@ init:
 
 build:
 	@$(call echo,Make $@)
+ifneq ($(CAM_MODELS),)
+	@$(MAKE) ceres
+endif
 ifeq ($(HOST_OS),Win)
 	@$(call cmake_build,./_build,..,-DCMAKE_INSTALL_PREFIX=$(MKFILE_DIR)/_install)
 else
-	@$(call cmake_build,./_build,..)
+	@$(call cmake_build,./_build,..,$(CMAKE_BUILD_EXTRA_OPTIONS))
 endif
 
 .PHONY: build
@@ -139,8 +171,8 @@ endif
 uninstall:
 	@$(call echo,Make $@)
 ifeq ($(HOST_OS),Linux)
-	$(SUDO) rm -rf /usr/local/lib/libmynteye*
 	$(SUDO) rm -rf /usr/local/include/mynteye/
+	$(SUDO) rm -rf /usr/local/lib/libmynteye.so*
 	$(SUDO) rm -rf /usr/local/lib/cmake/mynteye/
 	$(SUDO) rm -rf /usr/local/share/mynteye/
 endif
@@ -269,8 +301,8 @@ cleanlog:
 	@$(call rm_f,*FATAL*)
 
 cleanall: clean cleandoc
+	@$(call rm,./3rdparty/ceres-solver-1.11.0/_build/)
 	@$(call rm,./test/gtest/_build/)
-	@$(call rm,./third_party/glog/_build/)
 	@$(FIND) . -type f -name ".DS_Store" -print0 | xargs -0 rm -f
 	@$(call rm,./$(PBCVT_DIR)/)
 	@$(call rm,./$(NPCV_DIR)/)
@@ -296,6 +328,7 @@ host:
 	@echo LDD: $(LDD)
 	@echo CMAKE: $(CMAKE)
 	@echo PKGNAME: $(PKGNAME)
+	@echo CMAKE_BUILD_EXTRA_OPTIONS: $(CMAKE_BUILD_EXTRA_OPTIONS)
 
 .PHONY: host
 

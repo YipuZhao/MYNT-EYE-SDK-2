@@ -23,20 +23,36 @@ MYNTEYE_USE_NAMESPACE
 
 int main(int argc, char *argv[]) {
   auto &&api = API::Create(argc, argv);
-  if (!api)
-    return 1;
+  if (!api) return 1;
 
-  // Attention: must set FRAME_RATE and IMU_FREQUENCY together, otherwise won't
-  // succeed.
+  bool ok;
+  auto &&request = api->SelectStreamRequest(&ok);
+  if (!ok) return 1;
+  api->ConfigStreamRequest(request);
 
-  // FRAME_RATE values: 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
-  api->SetOptionValue(Option::FRAME_RATE, 25);
-  // IMU_FREQUENCY values: 100, 200, 250, 333, 500
-  api->SetOptionValue(Option::IMU_FREQUENCY, 500);
+  Model model = api->GetModel();
 
-  LOG(INFO) << "Set FRAME_RATE to " << api->GetOptionValue(Option::FRAME_RATE);
-  LOG(INFO) << "Set IMU_FREQUENCY to "
-            << api->GetOptionValue(Option::IMU_FREQUENCY);
+  // Set frame rate options for s1030
+  if (model == Model::STANDARD) {
+    // Attention: must set FRAME_RATE and IMU_FREQUENCY together,
+    // otherwise won't.
+    // succeed.
+
+    // FRAME_RATE values: 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60
+    api->SetOptionValue(Option::FRAME_RATE, 25);
+    // IMU_FREQUENCY values: 100, 200, 250, 333, 500
+    api->SetOptionValue(Option::IMU_FREQUENCY, 500);
+
+    LOG(INFO) << "Set FRAME_RATE to "
+              << api->GetOptionValue(Option::FRAME_RATE);
+    LOG(INFO) << "Set IMU_FREQUENCY to "
+              << api->GetOptionValue(Option::IMU_FREQUENCY);
+  }
+
+  // You should set frame rate for S2000/S2100/S210A by 'SelectStreamRequest()'
+  if (model == Model::STANDARD2 || model == Model::STANDARD210A) {
+    LOG(INFO) << "Please set frame rate by 'SelectStreamRequest()'";
+  }
 
   // Count img
   std::atomic_uint img_count(0);

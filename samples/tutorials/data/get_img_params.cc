@@ -13,16 +13,22 @@
 // limitations under the License.
 #include "mynteye/logger.h"
 #include "mynteye/api/api.h"
+#include "mynteye/types.h"
 
 MYNTEYE_USE_NAMESPACE
 
 int main(int argc, char *argv[]) {
   auto &&api = API::Create(argc, argv);
-  if (!api)
-    return 1;
+  if (!api) return 1;
 
-  LOG(INFO) << "Intrinsics left: {" << api->GetIntrinsics(Stream::LEFT) << "}";
-  LOG(INFO) << "Intrinsics right: {" << api->GetIntrinsics(Stream::RIGHT)
+  bool ok;
+  auto &&request = api->SelectStreamRequest(&ok);
+  if (!ok) return 1;
+  api->ConfigStreamRequest(request);
+
+  LOG(INFO) << "Intrinsics left: {" << *api->GetIntrinsicsBase(Stream::LEFT)
+            << "}";
+  LOG(INFO) << "Intrinsics right: {" << *api->GetIntrinsicsBase(Stream::RIGHT)
             << "}";
   LOG(INFO) << "Extrinsics right to left: {"
             << api->GetExtrinsics(Stream::RIGHT, Stream::LEFT) << "}";

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "mynteye/api/api.h"
+#include "mynteye/api/config.h"
 
 MYNTEYE_BEGIN_NAMESPACE
 
@@ -40,8 +41,10 @@ class Synthetic {
     MODE_LAST        // Unsupported
   } mode_t;
 
-  explicit Synthetic(API *api);
+  explicit Synthetic(API *api, CalibrationModel calib_model);
   ~Synthetic();
+
+  void NotifyImageParamsChanged();
 
   bool Supports(const Stream &stream) const;
   mode_t SupportsMode(const Stream &stream) const;
@@ -65,6 +68,7 @@ class Synthetic {
   bool HasPlugin() const;
 
  private:
+  void InitCalibInfo();
   void InitStreamSupports();
 
   mode_t GetStreamEnabledMode(const Stream &stream) const;
@@ -110,6 +114,13 @@ class Synthetic {
   std::shared_ptr<Processor> processor_;
 
   std::shared_ptr<Plugin> plugin_;
+
+  CalibrationModel calib_model_;
+
+  std::shared_ptr<IntrinsicsBase> intr_left_;
+  std::shared_ptr<IntrinsicsBase> intr_right_;
+  std::shared_ptr<Extrinsics> extr_;
+  bool calib_default_tag_;
 };
 
 template <class T, class P>

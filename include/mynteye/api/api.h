@@ -15,6 +15,7 @@
 #define MYNTEYE_API_API_H_
 #pragma once
 
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -26,6 +27,8 @@
 #include "mynteye/types.h"
 
 MYNTEYE_BEGIN_NAMESPACE
+
+struct DeviceInfo;
 
 class Device;
 class Synthetic;
@@ -71,8 +74,7 @@ struct MYNTEYE_API MotionData {
 
   bool operator==(const MotionData &other) const {
     if (imu && other.imu) {
-      return imu->frame_id == other.imu->frame_id &&
-             imu->timestamp == other.imu->timestamp;
+      return imu->timestamp == other.imu->timestamp;
     }
     return false;
   }
@@ -90,21 +92,9 @@ class MYNTEYE_API API {
   /** The api::MotionData callback. */
   using motion_callback_t = std::function<void(const api::MotionData &data)>;
 
-  explicit API(std::shared_ptr<Device> device);
+  explicit API(std::shared_ptr<Device> device, CalibrationModel calib_model);
   virtual ~API();
 
-  /**
-   * Create the API instance.
-   * @return the API instance.
-   * @note This will call device::select() to select a device.
-   */
-  static std::shared_ptr<API> Create();
-  /**
-   * Create the API instance.
-   * @param device the selected device.
-   * @return the API instance.
-   */
-  static std::shared_ptr<API> Create(std::shared_ptr<Device> device);
   /**
    * Create the API instance.
    * @param argc the arg count.
@@ -123,7 +113,13 @@ class MYNTEYE_API API {
    * @note This will init glog with args.
    */
   static std::shared_ptr<API> Create(
-      int argc, char *argv[], std::shared_ptr<Device> device);
+      int argc, char *argv[], const std::shared_ptr<Device> &device);
+  /**
+   * Create the API instance.
+   * @param device the selected device.
+   * @return the API instance.
+   */
+  static std::shared_ptr<API> Create(const std::shared_ptr<Device> &device);
 
   /**
    * Get the model.
@@ -148,6 +144,11 @@ class MYNTEYE_API API {
   bool Supports(const AddOns &addon) const;
 
   /**
+   * Log all stream requests and prompt user to select one.
+   */
+  StreamRequest SelectStreamRequest(bool *ok) const;
+
+  /**
    * Get all stream requests of the capability.
    */
   const std::vector<StreamRequest> &GetStreamRequests(
@@ -157,16 +158,46 @@ class MYNTEYE_API API {
    */
   void ConfigStreamRequest(
       const Capabilities &capability, const StreamRequest &request);
+  /**
+   * Get the config stream requests of the capability.
+   */
+  const StreamRequest &GetStreamRequest(const Capabilities &capability) const;
 
+  /**
+   * Get all stream requests of the key stream capability.
+   */
+  const std::vector<StreamRequest> &GetStreamRequests() const;
+  /**
+   * Config the stream request to the key stream capability.
+   */
+  void ConfigStreamRequest(const StreamRequest &request);
+  /**
+   * Get the config stream requests of the key stream capability.
+   */
+  const StreamRequest &GetStreamRequest() const;
+
+  /**
+   * Get the device info.
+   */
+  std::shared_ptr<DeviceInfo> GetInfo() const;
   /**
    * Get the device info.
    */
   std::string GetInfo(const Info &info) const;
 
   /**
+   * @deprecated Get the intrinsics (pinhole) of stream.
+   */
+  IntrinsicsPinhole GetIntrinsics(const Stream &stream) const;
+  /**
    * Get the intrinsics of stream.
    */
-  Intrinsics GetIntrinsics(const Stream &stream) const;
+  template <typename T>
+  T GetIntrinsics(const Stream &stream) const;
+  /**
+   * Get the intrinsics base of stream.
+   */
+  std::shared_ptr<IntrinsicsBase> GetIntrinsicsBase(const Stream &stream) const;
   /**
    * Get the extrinsics from one stream to another.
    */
@@ -278,7 +309,15 @@ class MYNTEYE_API API {
   std::shared_ptr<Device> device_;
 
   std::unique_ptr<Synthetic> synthetic_;
+
+  void CheckImageParams();
 };
+
+template <typename T>
+T API::GetIntrinsics(const Stream &stream) const {
+  auto in = GetIntrinsicsBase(stream);
+  return *std::dynamic_pointer_cast<T>(in);
+}
 
 MYNTEYE_END_NAMESPACE
 

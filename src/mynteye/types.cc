@@ -29,6 +29,8 @@ const char *to_string(const Model &value) {
     return "Model::" #X;
   switch (value) {
     CASE(STANDARD)
+    CASE(STANDARD2)
+    CASE(STANDARD210A)
     default:
       CHECK(is_valid(value));
       return "Model::UNKNOWN";
@@ -62,6 +64,7 @@ const char *to_string(const Capabilities &value) {
     return "Capabilities::" #X;
   switch (value) {
     CASE(STEREO)
+    CASE(STEREO_COLOR)
     CASE(COLOR)
     CASE(DEPTH)
     CASE(POINTS)
@@ -109,13 +112,16 @@ const char *to_string(const Option &value) {
     CASE(EXPOSURE_MODE)
     CASE(MAX_GAIN)
     CASE(MAX_EXPOSURE_TIME)
+    CASE(MIN_EXPOSURE_TIME)
     CASE(DESIRED_BRIGHTNESS)
     CASE(IR_CONTROL)
     CASE(HDR_MODE)
-    CASE(ZERO_DRIFT_CALIBRATION)
-    CASE(ERASE_CHIP)
     CASE(ACCELEROMETER_RANGE)
     CASE(GYROSCOPE_RANGE)
+    CASE(ACCELEROMETER_LOW_PASS_FILTER)
+    CASE(GYROSCOPE_LOW_PASS_FILTER)
+    CASE(ZERO_DRIFT_CALIBRATION)
+    CASE(ERASE_CHIP)
     default:
       CHECK(is_valid(value));
       return "Option::UNKNOWN";
@@ -157,6 +163,7 @@ const char *to_string(const Format &value) {
   switch (value) {
     CASE(GREY)
     CASE(YUYV)
+    CASE(BGR888)
     default:
       return "Format::UNKNOWN";
   }
@@ -169,6 +176,8 @@ std::size_t bytes_per_pixel(const Format &value) {
       return 1;
     case Format::YUYV:
       return 2;
+    case Format::BGR888:
+      return 3;
     default:
       LOG(FATAL) << "Unknown format";
   }
@@ -179,14 +188,49 @@ std::ostream &operator<<(std::ostream &os, const StreamRequest &request) {
             << ", format: " << request.format << ", fps: " << request.fps;
 }
 
-std::ostream &operator<<(std::ostream &os, const Intrinsics &in) {
-  os << FULL_PRECISION << "width: " << in.width << ", height: " << in.height
+const char *to_string(const CalibrationModel &model) {
+#define CASE(X)   \
+  case CalibrationModel::X: \
+    return "CalibrationModel::" #X;
+  switch (model) {
+    CASE(PINHOLE)
+    CASE(KANNALA_BRANDT)
+    default:
+      return "CalibrationModel::UNKNOWN";
+  }
+#undef CASE
+}
+
+std::ostream &operator<<(std::ostream &os, const IntrinsicsBase &in) {
+  switch (in.calib_model()) {
+    case CalibrationModel::PINHOLE:
+      return os << dynamic_cast<const IntrinsicsPinhole &>(in);
+    case CalibrationModel::KANNALA_BRANDT:
+      return os << dynamic_cast<const IntrinsicsEquidistant &>(in);
+    default:
+      return os << "unknown calib model";
+  }
+}
+
+std::ostream &operator<<(std::ostream &os, const IntrinsicsPinhole &in) {
+  os << "pinhole, " << FULL_PRECISION
+     << "width: " << in.width << ", height: " << in.height
      << ", fx: " << in.fx << ", fy: " << in.fy << ", cx: " << in.cx
      << ", cy: " << in.cy << ", model: " << static_cast<int>(in.model)
      << ", coeffs: [";
   for (int i = 0; i <= 3; i++)
     os << in.coeffs[i] << ", ";
   return os << in.coeffs[4] << "]";
+}
+
+std::ostream &operator<<(std::ostream &os, const IntrinsicsEquidistant &in) {
+  os << "equidistant, " << FULL_PRECISION
+     << "width: " << in.width << ", height: " << in.height
+     << ", k2: " << in.coeffs[0] << ", k3: " << in.coeffs[1]
+     << ", k4: " << in.coeffs[2] << ", k5: " << in.coeffs[3]
+     << ", mu: " << in.coeffs[4] << ", mv: " << in.coeffs[5]
+     << ", u0: " << in.coeffs[6] << ", v0: " << in.coeffs[7];
+  return os;
 }
 
 std::ostream &operator<<(std::ostream &os, const ImuIntrinsics &in) {

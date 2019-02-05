@@ -15,12 +15,11 @@
 #define MYNTEYE_TOOLS_DEVICE_WRITER_H_
 #pragma once
 
+#include <map>
 #include <memory>
 #include <string>
 
-#include "mynteye/mynteye.h"
-#include "mynteye/device/channels.h"
-#include "mynteye/device/types.h"
+#include "mynteye/device/device.h"
 
 MYNTEYE_BEGIN_NAMESPACE
 
@@ -31,8 +30,9 @@ namespace tools {
 class DeviceWriter {
  public:
   using dev_info_t = DeviceInfo;
-  using img_params_t = Channels::img_params_t;
-  using imu_params_t = Channels::imu_params_t;
+  using imu_params_t = device::imu_params_t;
+  using img_params_t = device::img_params_t;
+  using img_params_map_t = std::map<Resolution, device::img_params_t>;
 
   explicit DeviceWriter(std::shared_ptr<Device> device);
   ~DeviceWriter();
@@ -40,14 +40,15 @@ class DeviceWriter {
   bool WriteDeviceInfo(const dev_info_t &info);
   bool WriteDeviceInfo(const std::string &filepath);
 
-  bool WriteImgParams(const img_params_t &params);
+  bool WriteImgParams(const img_params_map_t &img_params_map);
   bool WriteImgParams(const std::string &filepath);
 
   bool WriteImuParams(const imu_params_t &params);
   bool WriteImuParams(const std::string &filepath);
 
   bool SaveDeviceInfo(const dev_info_t &info, const std::string &filepath);
-  bool SaveImgParams(const img_params_t &params, const std::string &filepath);
+  bool SaveImgParams(const img_params_map_t &img_params_map,
+      const std::string &filepath);
   bool SaveImuParams(const imu_params_t &params, const std::string &filepath);
 
   /** Save all infos of this device */
@@ -55,7 +56,7 @@ class DeviceWriter {
 
  private:
   dev_info_t LoadDeviceInfo(const std::string &filepath);
-  img_params_t LoadImgParams(const std::string &filepath);
+  img_params_map_t LoadImgParams(const std::string &filepath);
   imu_params_t LoadImuParams(const std::string &filepath);
 
   std::shared_ptr<Device> device_;

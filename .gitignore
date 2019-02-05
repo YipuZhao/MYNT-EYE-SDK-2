@@ -16,10 +16,14 @@ _output/
 
 /plugins/
 
+/3rdparty/ceres/
 /3rdparty/opencv/
 /pkginfo.sh
 /*.nsi
 /*.exe
+
+/node_modules/
+/package-lock.json
 
 # ros
 

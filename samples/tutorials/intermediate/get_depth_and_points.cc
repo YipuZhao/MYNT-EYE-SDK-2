@@ -148,12 +148,17 @@ MYNTEYE_USE_NAMESPACE
 
 int main(int argc, char *argv[]) {
   auto &&api = API::Create(argc, argv);
-  if (!api)
-    return 1;
+  if (!api) return 1;
+
+  bool ok;
+  auto &&request = api->SelectStreamRequest(&ok);
+  if (!ok) return 1;
+  api->ConfigStreamRequest(request);
 
   api->SetOptionValue(Option::IR_CONTROL, 80);
 
   api->EnableStreamData(Stream::DISPARITY_NORMALIZED);
+  api->EnableStreamData(Stream::POINTS);
   api->EnableStreamData(Stream::DEPTH);
 
   api->Start(Source::VIDEO_STREAMING);

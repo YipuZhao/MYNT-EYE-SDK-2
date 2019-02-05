@@ -23,13 +23,30 @@ MYNTEYE_USE_NAMESPACE
 
 int main(int argc, char *argv[]) {
   auto &&api = API::Create(argc, argv);
-  if (!api)
-    return 1;
+  if (!api) return 1;
 
-  // ACCELEROMETER_RANGE values: 4, 8, 16, 32
-  api->SetOptionValue(Option::ACCELEROMETER_RANGE, 8);
-  // GYROSCOPE_RANGE values: 500, 1000, 2000, 4000
-  api->SetOptionValue(Option::GYROSCOPE_RANGE, 1000);
+  bool ok;
+  auto &&request = api->SelectStreamRequest(&ok);
+  if (!ok) return 1;
+  api->ConfigStreamRequest(request);
+
+  Model model = api->GetModel();
+
+  // Set imu range for S1030
+  if (model == Model::STANDARD) {
+    // ACCELEROMETER_RANGE values: 4, 8, 16, 32
+    api->SetOptionValue(Option::ACCELEROMETER_RANGE, 8);
+    // GYROSCOPE_RANGE values: 500, 1000, 2000, 4000
+    api->SetOptionValue(Option::GYROSCOPE_RANGE, 1000);
+  }
+
+  // Set imu range for S2000/S2100/S210A
+  if (model == Model::STANDARD2 || model == Model::STANDARD210A) {
+    // ACCELEROMETER_RANGE values: 6, 12, 24, 32
+    api->SetOptionValue(Option::ACCELEROMETER_RANGE, 6);
+    // GYROSCOPE_RANGE values: 250, 500, 1000, 2000, 4000
+    api->SetOptionValue(Option::GYROSCOPE_RANGE, 1000);
+  }
 
   LOG(INFO) << "Set ACCELEROMETER_RANGE to "
             << api->GetOptionValue(Option::ACCELEROMETER_RANGE);

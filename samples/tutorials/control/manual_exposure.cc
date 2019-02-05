@@ -22,27 +22,56 @@ MYNTEYE_USE_NAMESPACE
 
 int main(int argc, char *argv[]) {
   auto &&api = API::Create(argc, argv);
-  if (!api)
-    return 1;
+  if (!api) return 1;
 
-  // manual-exposure: 1
-  api->SetOptionValue(Option::EXPOSURE_MODE, 1);
+  std::int32_t frame_rate = 0;
+  bool ok;
+  auto &&request = api->SelectStreamRequest(&ok);
+  if (!ok) return 1;
+  api->ConfigStreamRequest(request);
 
-  // gain: range [0,48], default 24
-  api->SetOptionValue(Option::GAIN, 24);
-  // brightness/exposure_time: range [0,240], default 120
-  api->SetOptionValue(Option::BRIGHTNESS, 120);
-  // contrast/black_level_calibration: range [0,255], default 127
-  api->SetOptionValue(Option::CONTRAST, 127);
+  Model model = api->GetModel();
 
-  LOG(INFO) << "Enable manual-exposure";
-  LOG(INFO) << "Set GAIN to " << api->GetOptionValue(Option::GAIN);
-  LOG(INFO) << "Set BRIGHTNESS to " << api->GetOptionValue(Option::BRIGHTNESS);
-  LOG(INFO) << "Set CONTRAST to " << api->GetOptionValue(Option::CONTRAST);
+  // Set manual exposure options fo s1030
+  if (model == Model::STANDARD) {
+    // manual-exposure: 1
+    api->SetOptionValue(Option::EXPOSURE_MODE, 1);
+    // gain: range [0,48], default 24
+    api->SetOptionValue(Option::GAIN, 24);
+    // brightness/exposure_time: range [0,240], default 120
+    api->SetOptionValue(Option::BRIGHTNESS, 120);
+    // contrast/black_level_calibration: range [0,255], default 127
+    api->SetOptionValue(Option::CONTRAST, 127);
+
+    frame_rate = api->GetOptionValue(Option::FRAME_RATE);
+
+    LOG(INFO) << "Enable manual-exposure";
+    LOG(INFO) << "Set EXPOSURE_MODE to "
+              << api->GetOptionValue(Option::EXPOSURE_MODE);
+    LOG(INFO) << "Set GAIN to " << api->GetOptionValue(Option::GAIN);
+    LOG(INFO) << "Set BRIGHTNESS to "
+              << api->GetOptionValue(Option::BRIGHTNESS);
+    LOG(INFO) << "Set CONTRAST to " << api->GetOptionValue(Option::CONTRAST);
+  }
+
+  // Set manual exposure options fo S2000/S2100/S210A
+  if (model == Model::STANDARD2 || model == Model::STANDARD210A) {
+    // manual-exposure: 1
+    api->SetOptionValue(Option::EXPOSURE_MODE, 1);
+
+    // brightness/exposure_time: range [0,240], default 120
+    api->SetOptionValue(Option::BRIGHTNESS, 120);
+
+    LOG(INFO) << "Enable manual-exposure";
+    LOG(INFO) << "Set EXPOSURE_MODE to "
+              << api->GetOptionValue(Option::EXPOSURE_MODE);
+    LOG(INFO) << "Set BRIGHTNESS to "
+              << api->GetOptionValue(Option::BRIGHTNESS);
+  }
 
   api->Start(Source::VIDEO_STREAMING);
 
-  CVPainter painter(api->GetOptionValue(Option::FRAME_RATE));
+  CVPainter painter(frame_rate);
 
   cv::namedWindow("frame");
 

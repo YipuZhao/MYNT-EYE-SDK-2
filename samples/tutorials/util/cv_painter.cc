@@ -82,7 +82,7 @@ cv::Rect CVPainter::DrawImgData(
 
   std::ostringstream ss;
   ss << "frame_id: " << data.frame_id;
-  ss << ", stamp: " << fmt_time << (0.01f * data.timestamp);  // ms
+  ss << ", stamp: " << fmt_time << (0.001f * data.timestamp);  // ms
   ss << ", expo: ";
   if (frame_rate_ == 0) {
     ss << data.exposure_time;
@@ -117,7 +117,7 @@ cv::Rect CVPainter::DrawImuData(
   if (gravity == BOTTOM_LEFT || gravity == BOTTOM_RIGHT)
     sign = -1;
 
-  Clear(ss) << "frame_id: " << data.frame_id << ", stamp: " << data.timestamp
+  Clear(ss) << "stamp: " << data.timestamp
             << ", temp: " << fmt_temp << data.temperature;
   cv::Rect rect_i = DrawText(img, ss.str(), gravity, 5);
 

@@ -21,8 +21,10 @@ include(${CMAKE_CURRENT_LIST_DIR}/Utils.cmake)
 # build components
 
 option(WITH_API "Build with API layer, need OpenCV" ON)
-
 option(WITH_DEVICE_INFO_REQUIRED "Build with device info required" ON)
+
+option(WITH_CAM_MODELS "Build with more camera models, WITH_API must be ON" OFF)
+option(WITH_BM_SOBEL_FILTER "Build with bm and sobel filter, need OpenCV contronb" OFF)
 
 # 3rdparty components
 
@@ -32,25 +34,21 @@ option(WITH_BOOST "Include Boost support" ON)
 #   Ubuntu: `sudo apt-get install libgoogle-glog-dev`
 option(WITH_GLOG "Include glog support" OFF)
 
-
 # packages
 
 if(WITH_API)
   include(${CMAKE_CURRENT_LIST_DIR}/DetectOpenCV.cmake)
-endif()
-
-if(WITH_DEVICE_INFO_REQUIRED)
-  add_definitions(-DWITH_DEVICE_INFO_REQUIRED)
+else()
+  # Disable WITH_CAM_MODELS if WITH_API is OFF
+  set(WITH_CAM_MODELS OFF)
 endif()
 
 if(WITH_BOOST)
-  find_package(Boost COMPONENTS filesystem)
+  find_package(Boost QUIET COMPONENTS filesystem)
   if(Boost_FOUND)
     set(Boost_VERSION_STRING "${Boost_MAJOR_VERSION}.${Boost_MINOR_VERSION}.${Boost_SUBMINOR_VERSION}")
     set(WITH_FILESYSTEM TRUE)
     set(WITH_BOOST_FILESYSTEM TRUE)
-    add_definitions(-DWITH_FILESYSTEM)
-    add_definitions(-DWITH_BOOST_FILESYSTEM)
   endif()
 endif()
 
@@ -58,13 +56,11 @@ if(NOT WITH_FILESYSTEM)
   if(MSVC OR MSYS OR MINGW)  # win
     set(WITH_FILESYSTEM TRUE)
     set(WITH_NATIVE_FILESYSTEM TRUE)
-    add_definitions(-DWITH_FILESYSTEM)
-    add_definitions(-DWITH_NATIVE_FILESYSTEM)
   endif()
 endif()
 
 if(WITH_GLOG)
-  include(${CMAKE_CURRENT_LIST_DIR}/DetectGLog.cmake)
+  find_package(glog REQUIRED)
 endif()
 
 find_package(CUDA QUIET)
@@ -121,6 +117,8 @@ if(WITH_API)
 endif()
 
 status("  WITH_DEVICE_INFO_REQUIRED: ${WITH_DEVICE_INFO_REQUIRED}")
+
+status("  WITH_CAM_MODELS: ${WITH_CAM_MODELS}")
 
 status("  WITH_BOOST: ${WITH_BOOST}")
 if(WITH_BOOST)

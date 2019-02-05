@@ -21,9 +21,15 @@ MYNTEYE_BEGIN_NAMESPACE
 
 const char DepthProcessor::NAME[] = "DepthProcessor";
 
-DepthProcessor::DepthProcessor(std::int32_t proc_period)
-    : Processor(std::move(proc_period)) {
-  VLOG(2) << __func__ << ": proc_period=" << proc_period;
+const int DISPARITY_MIN = 0;
+const int DISPARITY_MAX = 64;
+
+DepthProcessor::DepthProcessor(
+    std::shared_ptr<struct camera_calib_info_pair> calib_infos,
+    std::int32_t proc_period)
+    : Processor(std::move(proc_period)),
+    calib_infos_(calib_infos) {
+  VLOG(2) << __func__;
 }
 
 DepthProcessor::~DepthProcessor() {
@@ -43,9 +49,21 @@ bool DepthProcessor::OnProcess(
   MYNTEYE_UNUSED(parent)
   const ObjMat *input = Object::Cast<ObjMat>(in);
   ObjMat *output = Object::Cast<ObjMat>(out);
-  cv::Mat channels[3 /*input->value.channels()*/];
-  cv::split(input->value, channels);
-  channels[2].convertTo(output->value, CV_16UC1);
+  int rows = input->value.rows;
+  int cols = input->value.cols;
+  // std::cout << calib_infos_->T_mul_f << std::endl;
+  // 0.0793434
+  cv::Mat depth_mat = cv::Mat::zeros(rows, cols, CV_16U);
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      float disparity_value = input->value.at<float>(i, j);
+      if (disparity_value < DISPARITY_MAX && disparity_value > DISPARITY_MIN) {
+        float depth = calib_infos_->T_mul_f / disparity_value;
+        depth_mat.at<ushort>(i, j) = depth;
+      }
+    }
+  }
+  output->value = depth_mat;
   output->id = input->id;
   output->data = input->data;
   return true;

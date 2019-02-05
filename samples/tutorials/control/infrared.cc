@@ -20,21 +20,28 @@ MYNTEYE_USE_NAMESPACE
 
 int main(int argc, char *argv[]) {
   auto &&api = API::Create(argc, argv);
-  if (!api)
-    return 1;
+  if (!api) return 1;
 
-  // Detect infrared add-ons
-  LOG(INFO) << "Support infrared: " << std::boolalpha
-            << api->Supports(AddOns::INFRARED);
-  LOG(INFO) << "Support infrared2: " << std::boolalpha
-            << api->Supports(AddOns::INFRARED2);
+  bool ok;
+  auto &&request = api->SelectStreamRequest(&ok);
+  if (!ok) return 1;
+  api->ConfigStreamRequest(request);
 
-  // Get infrared intensity range
-  auto &&info = api->GetOptionInfo(Option::IR_CONTROL);
-  LOG(INFO) << Option::IR_CONTROL << ": {" << info << "}";
+  Model model = api->GetModel();
 
-  // Set infrared intensity value
-  api->SetOptionValue(Option::IR_CONTROL, 80);
+  if (model == Model::STANDARD || model == Model::STANDARD2) {
+    // ir control: range [0,160], default 0
+    api->SetOptionValue(Option::IR_CONTROL, 80);
+
+    LOG(INFO) << "Set IR_CONTROL to "
+              << api->GetOptionValue(Option::IR_CONTROL);
+  }
+
+  // MYNTEYE-S210A don't support this option
+  if (model == Model::STANDARD210A) {
+    LOG(INFO) << "Sorry,MYNTEYE-S210A don't support ir control";
+    return 0;
+  }
 
   api->Start(Source::VIDEO_STREAMING);
 

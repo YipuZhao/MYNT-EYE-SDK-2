@@ -53,28 +53,34 @@ message(STATUS "Found mynteye: ${mynteye_VERSION}")
 
 include(${PRO_DIR}/cmake/DetectOpenCV.cmake)
 
+if(mynteye_WITH_GLOG)
+  include(${PRO_DIR}/cmake/DetectGLog.cmake)
+endif()
+
 #LIST(APPEND CMAKE_MODULE_PATH ${PRO_DIR}/cmake)
 
 # targets
 
 set(OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/_output")
 
-# samples above api layer
-
-if(WITH_API)
-  add_subdirectory(api)
-endif()
-
-# samples above device layer
-
-add_subdirectory(device)
-
+if(OS_MAC)
 # samples above uvc layer
 
-add_subdirectory(uvc)
+  add_subdirectory(uvc)
+else()
+  # samples above device layer
 
-# tutorials
+  add_subdirectory(device)
 
-if(WITH_API)
-  add_subdirectory(tutorials)
+  # tutorials
+
+  if(WITH_API)
+    add_subdirectory(tutorials)
+  endif()
+
+  # samples above api layer
+
+  if(WITH_API)
+    add_subdirectory(api)
+  endif()
 endif()

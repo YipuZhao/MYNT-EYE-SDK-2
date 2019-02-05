@@ -26,7 +26,6 @@
 #include "mynteye/api/plugin.h"
 #include "mynteye/api/synthetic.h"
 #include "mynteye/device/device.h"
-#include "mynteye/device/device_s.h"
 #include "mynteye/device/utils.h"
 
 #if defined(WITH_FILESYSTEM) && defined(WITH_NATIVE_FILESYSTEM)
@@ -208,59 +207,62 @@ std::vector<std::string> get_plugin_paths() {
 
 }  // namespace
 
-API::API(std::shared_ptr<Device> device) : device_(device) {
+API::API(std::shared_ptr<Device> device, CalibrationModel calib_model)
+    : device_(device) {
   VLOG(2) << __func__;
-  if (std::dynamic_pointer_cast<StandardDevice>(device_) != nullptr) {
-    bool in_l_ok, in_r_ok, ex_r2l_ok;
-    device_->GetIntrinsics(Stream::LEFT, &in_l_ok);
-    device_->GetIntrinsics(Stream::RIGHT, &in_r_ok);
-    device_->GetExtrinsics(Stream::RIGHT, Stream::LEFT, &ex_r2l_ok);
-    if (!in_l_ok || !in_r_ok || !ex_r2l_ok) {
-#if defined(WITH_DEVICE_INFO_REQUIRED)
-      LOG(FATAL)
-#else
-      LOG(WARNING)
-#endif
-          << "Image params not found, but we need it to process the "
-             "images. Please `make tools` and use `img_params_writer` "
-             "to write the image params. If you update the SDK from "
-             "1.x, the `SN*.conf` is the file contains them. Besides, "
-             "you could also calibrate them by yourself. Read the guide "
-             "doc (https://github.com/slightech/MYNT-EYE-S-SDK-Guide) "
-             "to learn more.";
-    }
-  }
-  synthetic_.reset(new Synthetic(this));
+  // std::dynamic_pointer_cast<StandardDevice>(device_);
+  synthetic_.reset(new Synthetic(this, calib_model));
 }
 
 API::~API() {
   VLOG(2) << __func__;
 }
 
-std::shared_ptr<API> API::Create() {
-  return Create(device::select());
-}
-
-std::shared_ptr<API> API::Create(std::shared_ptr<Device> device) {
-  if (!device)
-    return nullptr;
-  return std::make_shared<API>(device);
-}
-
 std::shared_ptr<API> API::Create(int argc, char *argv[]) {
-  static glog_init _(argc, argv);
   auto &&device = device::select();
-  if (!device)
-    return nullptr;
-  return std::make_shared<API>(device);
+  if (!device) return nullptr;
+  return Create(argc, argv, device);
 }
 
 std::shared_ptr<API> API::Create(
-    int argc, char *argv[], std::shared_ptr<Device> device) {
+    int argc, char *argv[], const std::shared_ptr<Device> &device) {
   static glog_init _(argc, argv);
-  if (!device)
-    return nullptr;
-  return std::make_shared<API>(device);
+  return Create(device);
+}
+
+std::shared_ptr<API> API::Create(const std::shared_ptr<Device> &device) {
+  std::shared_ptr<API> api = nullptr;
+  if (device != nullptr) {
+    bool in_l_ok, in_r_ok;
+    auto left_intr  = device->GetIntrinsics(Stream::LEFT, &in_l_ok);
+    auto right_intr = device->GetIntrinsics(Stream::RIGHT, &in_r_ok);
+    if (!in_l_ok || !in_r_ok) {
+      LOG(ERROR) << "Image params not found, but we need it to process the "
+                    "images. Please `make tools` and use `img_params_writer` "
+                    "to write the image params. If you update the SDK from "
+                    "1.x, the `SN*.conf` is the file contains them. Besides, "
+                    "you could also calibrate them by yourself. Read the guide "
+                    "doc (https://github.com/slightech/MYNT-EYE-SDK-2-Guide) "
+                    "to learn more.";
+      LOG(WARNING) << "use pinhole as default";
+      api = std::make_shared<API>(device, CalibrationModel::UNKNOW);
+      return api;
+    } else {
+      if (left_intr->calib_model() != right_intr->calib_model()) {
+        LOG(ERROR) << "left camera and right camera use different calib models!";
+        LOG(WARNING) << "use pinhole as default";
+        api = std::make_shared<API>(device, CalibrationModel::UNKNOW);
+        return api;
+      } else {
+        api = std::make_shared<API>(device, left_intr->calib_model());
+        return api;
+      }
+    }
+  } else {
+    LOG(ERROR) <<"no device!";
+    api = std::make_shared<API>(device, CalibrationModel::UNKNOW);
+  }
+  return api;
 }
 
 Model API::GetModel() const {
@@ -283,6 +285,10 @@ bool API::Supports(const AddOns &addon) const {
   return device_->Supports(addon);
 }
 
+StreamRequest API::SelectStreamRequest(bool *ok) const {
+  return device::select_request(device_, ok);
+}
+
 const std::vector<StreamRequest> &API::GetStreamRequests(
     const Capabilities &capability) const {
   return device_->GetStreamRequests(capability);
@@ -291,13 +297,46 @@ const std::vector<StreamRequest> &API::GetStreamRequests(
 void API::ConfigStreamRequest(
     const Capabilities &capability, const StreamRequest &request) {
   device_->ConfigStreamRequest(capability, request);
+  synthetic_->NotifyImageParamsChanged();
+}
+
+const StreamRequest &API::GetStreamRequest(
+    const Capabilities &capability) const {
+  return device_->GetStreamRequest(capability);
+}
+
+const std::vector<StreamRequest> &API::GetStreamRequests() const {
+  return device_->GetStreamRequests();
+}
+
+void API::ConfigStreamRequest(const StreamRequest &request) {
+  device_->ConfigStreamRequest(request);
+  synthetic_->NotifyImageParamsChanged();
+}
+
+const StreamRequest &API::GetStreamRequest() const {
+  return device_->GetStreamRequest();
+}
+
+std::shared_ptr<DeviceInfo> API::GetInfo() const {
+  return device_->GetInfo();
 }
 
 std::string API::GetInfo(const Info &info) const {
   return device_->GetInfo(info);
 }
 
-Intrinsics API::GetIntrinsics(const Stream &stream) const {
+IntrinsicsPinhole API::GetIntrinsics(const Stream &stream) const {
+  auto in = GetIntrinsicsBase(stream);
+  if (in->calib_model() == CalibrationModel::PINHOLE) {
+    return *std::dynamic_pointer_cast<IntrinsicsPinhole>(in);
+  }
+  throw std::runtime_error("Intrinsics is not pinhole model"
+      ", please use GetIntrinsicsBase() or GetIntrinsics<T>() instead.");
+}
+
+std::shared_ptr<IntrinsicsBase> API::GetIntrinsicsBase(
+    const Stream &stream) const {
   return device_->GetIntrinsics(stream);
 }
 
@@ -448,6 +487,25 @@ void API::EnablePlugin(const std::string &path) {
 
 std::shared_ptr<Device> API::device() {
   return device_;
+}
+
+// TODO(Kalman): Call this function in the appropriate place
+void API::CheckImageParams() {
+  if (device_ != nullptr) {
+    bool in_l_ok, in_r_ok, ex_l2r_ok;
+    device_->GetIntrinsics(Stream::LEFT, &in_l_ok);
+    device_->GetIntrinsics(Stream::RIGHT, &in_r_ok);
+    device_->GetExtrinsics(Stream::LEFT, Stream::RIGHT, &ex_l2r_ok);
+    if (!in_l_ok || !in_r_ok || !ex_l2r_ok) {
+      LOG(FATAL) << "Image params not found, but we need it to process the "
+                    "images. Please `make tools` and use `img_params_writer` "
+                    "to write the image params. If you update the SDK from "
+                    "1.x, the `SN*.conf` is the file contains them. Besides, "
+                    "you could also calibrate them by yourself. Read the guide "
+                    "doc (https://github.com/slightech/MYNT-EYE-SDK-2-Guide) "
+                    "to learn more.";
+    }
+  }
 }
 
 MYNTEYE_END_NAMESPACE

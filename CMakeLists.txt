@@ -14,7 +14,7 @@
 
 cmake_minimum_required(VERSION 3.0)
 
-project(mynteye VERSION 2.2.2 LANGUAGES C CXX)
+project(mynteye VERSION 2.3.0 LANGUAGES C CXX)
 
 include(cmake/Common.cmake)
 
@@ -55,7 +55,7 @@ macro(target_link_threads NAME)
     target_compile_options(PUBLIC ${NAME} "-pthread")
   endif()
   if(CMAKE_THREAD_LIBS_INIT)
-    target_link_libraries(${NAME} "${CMAKE_THREAD_LIBS_INIT}")
+    target_link_libraries(${NAME} PUBLIC "${CMAKE_THREAD_LIBS_INIT}")
   endif()
 endmacro()
 
@@ -94,6 +94,18 @@ if(OS_WIN)
   )
 endif()
 
+# rpath
+
+set(CMAKE_MACOSX_RPATH 1)
+set(MYNTEYE_CMAKE_RPATH "")
+if(WITH_OPENCV)
+  list(APPEND MYNTEYE_CMAKE_RPATH ${OpenCV_LIB_PATH})
+endif()
+if(MYNTEYE_CMAKE_RPATH)
+  message(STATUS "RPATH: ${MYNTEYE_CMAKE_RPATH}")
+  set(CMAKE_INSTALL_RPATH "${MYNTEYE_CMAKE_RPATH}")
+endif()
+
 # targets
 
 add_definitions(-DMYNTEYE_EXPORTS)
@@ -116,6 +128,43 @@ if(WITH_GLOG)
   )
 endif()
 
+## camodocal
+
+if(WITH_CAM_MODELS)
+  set(EIGEN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/eigen3)
+
+  LIST(APPEND CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ceres/share/Ceres)
+  find_package(Ceres REQUIRED)
+
+  message(STATUS "CERES_INCLUDE_DIRS: ${CERES_INCLUDE_DIRS}")
+  message(STATUS "CERES_LIBRARIES: ${CERES_LIBRARIES}")
+  message(STATUS "EIGEN_INCLUDE_DIRS: ${EIGEN_INCLUDE_DIRS}")
+
+  include_directories(
+    ${CERES_INCLUDE_DIRS}
+    ${EIGEN_INCLUDE_DIRS}
+    src/mynteye/api/camodocal/include
+  )
+
+  add_library(camodocal STATIC
+    src/mynteye/api/camodocal/src/chessboard/Chessboard.cc
+    src/mynteye/api/camodocal/src/calib/CameraCalibration.cc
+    src/mynteye/api/camodocal/src/calib/StereoCameraCalibration.cc
+    src/mynteye/api/camodocal/src/camera_models/Camera.cc
+    src/mynteye/api/camodocal/src/camera_models/CameraFactory.cc
+    src/mynteye/api/camodocal/src/camera_models/CostFunctionFactory.cc
+    src/mynteye/api/camodocal/src/camera_models/PinholeCamera.cc
+    src/mynteye/api/camodocal/src/camera_models/CataCamera.cc
+    src/mynteye/api/camodocal/src/camera_models/EquidistantCamera.cc
+    src/mynteye/api/camodocal/src/camera_models/ScaramuzzaCamera.cc
+    src/mynteye/api/camodocal/src/sparse_graph/Transform.cc
+    src/mynteye/api/camodocal/src/gpl/gpl.cc
+    src/mynteye/api/camodocal/src/gpl/EigenQuaternionParameterization.cc
+  )
+  target_link_libraries(camodocal ${CERES_LIBRARIES})
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+endif()
+
 ## libmynteye
 
 if(NOT WITH_GLOG AND NOT OS_WIN)
@@ -124,16 +173,26 @@ if(NOT WITH_GLOG AND NOT OS_WIN)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${__MINIGLOG_FLAGS}")
   unset(__MINIGLOG_FLAGS)
 endif()
+if(NOT WITH_GLOG)
+  list(APPEND MYNTEYE_PUBLIC_H
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/mynteye/miniglog.h
+  )
+endif()
 
 if(OS_WIN)
   set(UVC_SRC src/mynteye/uvc/win/uvc-wmf.cc)
 elseif(OS_MAC)
-  set(UVC_SRC src/mynteye/uvc/macosx/uvc-libuvc.cc)
+  add_compile_options(-x objective-c++ -Wno-unused-command-line-argument -Wno-missing-method-return-type -Wno-sign-compare)
 
-  find_package(libuvc REQUIRED)
-  set(UVC_LIB ${libuvc_LIBRARIES})
+  INCLUDE_DIRECTORIES(src/mynteye/uvc/macosx/USBBusProber.framework/Headers)
+  INCLUDE_DIRECTORIES(src/mynteye/uvc/macosx/VVUVCKit.framework/Headers)
+  find_library(VVUVCKIT_LIBRARY VVUVCKit PATHS src/mynteye/uvc/macosx)
+  find_library(USB_LIBRARY USBBusProber PATHS src/mynteye/uvc/macosx)
+  MARK_AS_ADVANCED (VVUVCKIT_LIBRARY USB_LIBRARY)
+  SET(OSX_EXTRA_LIBS ${VVUVCKIT_LIBRARY} ${USB_LIBRARY})
 
-  include_directories(${libuvc_INCLUDE_DIRS})
+  set(UVC_SRC src/mynteye/uvc/macosx/CameraEngine.cpp src/mynteye/uvc/macosx/AVfoundationCamera.mm src/mynteye/uvc/macosx/uvc-vvuvckit.cc )
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -framework CoreFoundation -framework AVFoundation -framework IOKit -framework AppKit -framework Cocoa -framework CoreMedia -framework CoreData -framework Foundation -framework CoreVideo ${__MACUVCLOG_FLAGS}")
 elseif(OS_LINUX)
   set(UVC_SRC src/mynteye/uvc/linux/uvc-v4l2.cc)
 else()
@@ -145,12 +204,22 @@ set(MYNTEYE_SRCS
   src/mynteye/types.cc
   src/mynteye/util/files.cc
   src/mynteye/util/strings.cc
-  src/mynteye/device/channels.cc
+  src/mynteye/device/channel/bytes.cc
+  src/mynteye/device/channel/channels.cc
+  src/mynteye/device/channel/file_channel.cc
   src/mynteye/device/config.cc
   src/mynteye/device/context.cc
   src/mynteye/device/device.cc
-  src/mynteye/device/device_s.cc
   src/mynteye/device/motions.cc
+  src/mynteye/device/standard/channels_adapter_s.cc
+  src/mynteye/device/standard/device_s.cc
+  src/mynteye/device/standard/streams_adapter_s.cc
+  src/mynteye/device/standard2/channels_adapter_s2.cc
+  src/mynteye/device/standard2/device_s2.cc
+  src/mynteye/device/standard2/streams_adapter_s2.cc
+  src/mynteye/device/standard2/channels_adapter_s210a.cc
+  src/mynteye/device/standard2/device_s210a.cc
+  src/mynteye/device/standard2/streams_adapter_s210a.cc
   src/mynteye/device/streams.cc
   src/mynteye/device/types.cc
   src/mynteye/device/utils.cc
@@ -161,14 +230,23 @@ if(WITH_API)
     src/mynteye/api/dl.cc
     src/mynteye/api/processor.cc
     src/mynteye/api/synthetic.cc
-    src/mynteye/api/processor/rectify_processor.cc
     src/mynteye/api/processor/disparity_processor.cc
     src/mynteye/api/processor/disparity_normalized_processor.cc
-    src/mynteye/api/processor/depth_processor.cc
-    src/mynteye/api/processor/points_processor.cc
+    src/mynteye/api/processor/points_processor_ocv.cc
+    src/mynteye/api/processor/depth_processor_ocv.cc
+    src/mynteye/api/processor/rectify_processor_ocv.cc
+    src/mynteye/api/config.cc
   )
+  if(WITH_CAM_MODELS)
+    list(APPEND MYNTEYE_SRCS
+      src/mynteye/api/processor/depth_processor.cc
+      src/mynteye/api/processor/points_processor.cc
+      src/mynteye/api/processor/rectify_processor.cc
+    )
+  endif()
 endif()
-if(NOT WITH_GLOG)
+
+if(NOT WITH_GLOG AND NOT WITH_CAM_MODELS)
   list(APPEND MYNTEYE_SRCS src/mynteye/miniglog.cc)
 endif()
 
@@ -182,10 +260,17 @@ endif()
 if(WITH_GLOG)
   list(APPEND MYNTEYE_LINKLIBS glog::glog)
 endif()
+
 #message(STATUS "MYNTEYE_LINKLIBS: ${MYNTEYE_LINKLIBS}")
 
 add_library(${MYNTEYE_NAME} SHARED ${MYNTEYE_SRCS})
-target_link_libraries(${MYNTEYE_NAME} ${MYNTEYE_LINKLIBS})
+target_link_libraries(${MYNTEYE_NAME} PUBLIC ${MYNTEYE_LINKLIBS})
+if(OS_MAC)
+  target_link_libraries(${MYNTEYE_NAME} PUBLIC ${OSX_EXTRA_LIBS} )
+endif()
+if(WITH_CAM_MODELS)
+  target_link_libraries(${MYNTEYE_NAME} PRIVATE camodocal)
+endif()
 target_link_threads(${MYNTEYE_NAME})
 
 if(OS_WIN)
@@ -224,6 +309,7 @@ install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mynteye/device/callbacks.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mynteye/device/context.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mynteye/device/device.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/mynteye/device/types.h
   ${CMAKE_CURRENT_SOURCE_DIR}/include/mynteye/device/utils.h
   DESTINATION ${MYNTEYE_CMAKE_INCLUDE_DIR}/device
 )
@@ -245,6 +331,12 @@ if(NOT WITH_GLOG)
   install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/mynteye/miniglog.h
     DESTINATION ${MYNTEYE_CMAKE_INCLUDE_DIR}
+  )
+endif()
+if(WITH_CAM_MODELS)
+  install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/glog/logging.h
+    DESTINATION ${MYNTEYE_CMAKE_INCLUDE_DIR}/glog
   )
 endif()
 

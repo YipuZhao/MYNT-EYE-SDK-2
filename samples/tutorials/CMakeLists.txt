@@ -16,6 +16,7 @@ get_filename_component(DIR_NAME ${CMAKE_CURRENT_LIST_DIR} NAME)
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
+  ${PRO_DIR}/src
 )
 
 set_outdir(
@@ -114,7 +115,9 @@ make_executable2(get_with_plugin SRCS data/get_with_plugin.cc WITH_OPENCV)
 ## control
 
 make_executable2(ctrl_framerate SRCS control/framerate.cc WITH_OPENCV)
+make_executable2(ctrl_imu_low_pass_filter SRCS control/imu_low_pass_filter.cc WITH_OPENCV)
 make_executable2(ctrl_imu_range SRCS control/imu_range.cc WITH_OPENCV)
+make_executable2(ctrl_infrared SRCS control/infrared.cc WITH_OPENCV)
 make_executable2(ctrl_auto_exposure
   SRCS control/auto_exposure.cc util/cv_painter.cc
   WITH_OPENCV
@@ -123,11 +126,6 @@ make_executable2(ctrl_manual_exposure
   SRCS control/manual_exposure.cc util/cv_painter.cc
   WITH_OPENCV
 )
-make_executable2(ctrl_infrared SRCS control/infrared.cc WITH_OPENCV)
-
-# intermediate level
-
-make_executable2(get_all_device_info SRCS intermediate/get_all_device_info.cc WITH_OPENCV)
 
 if(PCL_FOUND)
 

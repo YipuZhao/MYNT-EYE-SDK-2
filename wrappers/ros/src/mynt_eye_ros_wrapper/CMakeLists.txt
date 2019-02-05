@@ -57,11 +57,6 @@ checkPackage("tf" "")
 
 ## messages
 
-add_message_files(
-  FILES
-  Temp.msg
-)
-
 add_service_files(
   FILES
   GetInfo.srv
@@ -88,13 +83,10 @@ if(NOT mynteye_WITH_API)
   message(FATAL_ERROR "Must with API layer :(")
 endif()
 
-include(cmake/DetectOpenCV.cmake)
+find_package(OpenCV REQUIRED)
 
 if(mynteye_WITH_GLOG)
   find_package(glog REQUIRED)
-  if(glog_FOUND)
-    add_definitions(-DWITH_GLOG)
-  endif()
 endif()
 
 # targets
@@ -103,6 +95,7 @@ add_compile_options(-std=c++11)
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${SDK_DIR}/src
 )
 
 set(LINK_LIBS
@@ -137,12 +130,12 @@ install(TARGETS mynteye_wrapper mynteye_wrapper_node
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-install(DIRECTORY launch
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+install(DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
 )
 
-install(DIRECTORY rviz
-  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+install(DIRECTORY rviz/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
 )
 
 install(FILES nodelet_plugins.xml
