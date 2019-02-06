@@ -82,8 +82,8 @@
   <arg name="standard/frame_rate" default="30" />
 
   <!-- standard/imu_frequency range: {100,200,250,333,500} -->
-  <arg name="standard/imu_frequency" default="-1" />
-  <!-- <arg name="standard/imu_frequency" default="200" /> -->
+  <!-- <arg name="standard/imu_frequency" default="-1" /> -->
+  <arg name="standard/imu_frequency" default="200" />
 
   <!-- standard/exposure_mode, 0: auto-exposure, 1: manual-exposure -->
  <!--  <arg name="standard/exposure_mode" default="-1" /> -->
