@@ -13,6 +13,7 @@
 // limitations under the License.
 #include "mynteye/device/utils.h"
 
+#include <algorithm>
 #include <cstdlib>
 
 #include "mynteye/logger.h"
@@ -20,9 +21,13 @@
 #include "mynteye/device/context.h"
 #include "mynteye/device/device.h"
 
-#include "mynteye/logger.h"
-
 MYNTEYE_BEGIN_NAMESPACE
+
+bool sort_sn(std::shared_ptr<Device> device1,
+    std::shared_ptr<Device> device2) {
+  return device1->GetInfo(Info::SERIAL_NUMBER) <
+    device2->GetInfo(Info::SERIAL_NUMBER);
+}
 
 namespace device {
 
@@ -37,12 +42,16 @@ std::shared_ptr<Device> select() {
     return nullptr;
   }
 
+  if (n > 1)
+    sort(devices.begin(), devices.end(), sort_sn);
+
   LOG(INFO) << "MYNT EYE devices:";
   for (std::size_t i = 0; i < n; i++) {
     auto &&device = devices[i];
     LOG(INFO) << "  index: " << i
               << ", name: " << device->GetInfo(Info::DEVICE_NAME)
-              << ", sn: " << device->GetInfo(Info::SERIAL_NUMBER);
+              << ", sn: " << device->GetInfo(Info::SERIAL_NUMBER)
+              << ", firmware: " << device->GetInfo(Info::FIRMWARE_VERSION);
   }
 
   std::shared_ptr<Device> device = nullptr;
@@ -70,13 +79,18 @@ MYNTEYE_NAMESPACE::StreamRequest select_request(
     const std::shared_ptr<Device> &device, bool *ok) {
   auto &&requests = device->GetStreamRequests();
   std::size_t n = requests.size();
+  // TODO(Kalman): Get request size by uvc enum
+  if (device->GetModel() == Model::STANDARD &&
+        device->GetInfo()->firmware_version < Version(2, 4)) {
+    n -= 1;
+  }
   if (n <= 0) {
     LOG(ERROR) << "No MYNT EYE devices :(";
     *ok = false;
     return {};
   }
 
-  LOG(INFO) << "MYNT EYE devices:";
+  LOG(INFO) << "MYNT EYE requests:";
   for (std::size_t i = 0; i < n; i++) {
     auto &&request = requests[i];
     LOG(INFO) << "  index: " << i

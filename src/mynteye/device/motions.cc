@@ -18,11 +18,39 @@
 
 MYNTEYE_BEGIN_NAMESPACE
 
+namespace {
+
+void matrix_3x1(const double (*src1)[3], const double (*src2)[1],
+    double (*dst)[1]) {
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 1; j++) {
+      for (int k = 0; k < 3; k++) {
+        dst[i][j] += src1[i][k] * src2[k][j];
+      }
+    }
+  }
+}
+
+void matrix_3x3(const double (*src1)[3], const double (*src2)[3],
+    double (*dst)[3]) {
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+      for (int k = 0; k < 3; k++) {
+        dst[i][j] += src1[i][k] * src2[k][j];
+      }
+    }
+  }
+}
+
+} // namespace
+
 Motions::Motions(std::shared_ptr<Channels> channels)
     : channels_(channels),
       motion_callback_(nullptr),
       motion_datas_enabled_(false),
-      is_imu_tracking(false) {
+      is_imu_tracking(false),
+      proc_mode_(static_cast<const std::int32_t>(ProcessMode::PROC_NONE)),
+      motion_intrinsics_(nullptr) {
   CHECK_NOTNULL(channels_);
   VLOG(2) << __func__;
 }
@@ -56,6 +84,7 @@ void Motions::SetMotionCallback(motion_callback_t callback) {
         imu->frame_id = seg.frame_id;
         imu->timestamp = seg.timestamp;
         imu->flag = seg.flag;
+        imu->is_ets = seg.is_ets;
         imu->temperature = seg.temperature / 326.8f + 25;
         imu->accel[0] = seg.accel[0] * 1.f * accel_range / 0x10000;
         imu->accel[1] = seg.accel[1] * 1.f * accel_range / 0x10000;
@@ -64,9 +93,23 @@ void Motions::SetMotionCallback(motion_callback_t callback) {
         imu->gyro[1] = seg.gyro[1] * 1.f * gyro_range / 0x10000;
         imu->gyro[2] = seg.gyro[2] * 1.f * gyro_range / 0x10000;
 
+        bool proc_assembly = ((proc_mode_ & ProcessMode::PROC_IMU_ASSEMBLY) > 0);
+        bool proc_temp_drift = ((proc_mode_ & ProcessMode::PROC_IMU_TEMP_DRIFT) > 0);
+        if (proc_assembly && proc_temp_drift) {
+          ProcImuTempDrift(imu);
+          ProcImuAssembly(imu);
+        } else if (proc_assembly) {
+          ProcImuAssembly(imu);
+        } else if (proc_temp_drift) {
+          ProcImuTempDrift(imu);
+        }
+
         std::lock_guard<std::mutex> _(mtx_datas_);
         motion_data_t data = {imu};
-        if (motion_datas_enabled_) {
+        if (motion_datas_enabled_ && motion_datas_max_size_ > 0) {
+          if (motion_datas_.size() >= motion_datas_max_size_) {
+            motion_datas_.erase(motion_datas_.begin());
+          }
           motion_datas_.push_back(data);
         }
 
@@ -98,13 +141,21 @@ void Motions::StopMotionTracking() {
   }
 }
 
+void Motions::DisableMotionDatas() {
+  std::lock_guard<std::mutex> _(mtx_datas_);
+  motion_datas_enabled_ = false;
+  motion_datas_max_size_ = 0;
+  motion_datas_.clear();
+}
+
 void Motions::EnableMotionDatas(std::size_t max_size) {
   if (max_size <= 0) {
     LOG(WARNING) << "Could not enable motion datas with max_size <= 0";
     return;
   }
+  std::lock_guard<std::mutex> _(mtx_datas_);
   motion_datas_enabled_ = true;
-  motion_datas_max_size = max_size;
+  motion_datas_max_size_ = max_size;
 }
 
 Motions::motion_datas_t Motions::GetMotionDatas() {
@@ -116,6 +167,84 @@ Motions::motion_datas_t Motions::GetMotionDatas() {
   motion_datas_t datas = motion_datas_;
   motion_datas_.clear();
   return datas;
+}
+
+void Motions::ProcImuAssembly(std::shared_ptr<ImuData> data) const {
+  if (nullptr == motion_intrinsics_ ||
+      IsNullAssemblyOrTempDrift())
+    return;
+
+  double dst[3][3] = {0};
+  if (data->flag == 1) {
+    matrix_3x3(motion_intrinsics_->accel.scale,
+        motion_intrinsics_->accel.assembly, dst);
+    double s[3][1] = {0};
+    double d[3][1] = {0};
+    for (int i = 0; i < 3; i++) {
+      s[i][0] = data->accel[i];
+    }
+    matrix_3x1(dst, s, d);
+    for (int i = 0; i < 3; i++) {
+      data->accel[i] = d[i][0];
+    }
+  } else if (data->flag == 2) {
+    matrix_3x3(motion_intrinsics_->gyro.scale,
+        motion_intrinsics_->gyro.assembly, dst);
+    double s[3][1] = {0};
+    double d[3][1] = {0};
+    for (int i = 0; i < 3; i++) {
+      s[i][0] = data->gyro[i];
+    }
+    matrix_3x1(dst, s, d);
+    for (int i = 0; i < 3; i++) {
+      data->gyro[i] = d[i][0];
+    }
+  }
+}
+
+void Motions::ProcImuTempDrift(std::shared_ptr<ImuData> data) const {
+  if (nullptr == motion_intrinsics_ ||
+      IsNullAssemblyOrTempDrift())
+    return;
+
+  double temp = data->temperature;
+  if (data->flag == 1) {
+    data->accel[0] -= motion_intrinsics_->accel.x[1] * temp
+      + motion_intrinsics_->accel.x[0];
+    data->accel[1] -= motion_intrinsics_->accel.y[1] * temp
+      + motion_intrinsics_->accel.y[0];
+    data->accel[2] -= motion_intrinsics_->accel.z[1] * temp
+      + motion_intrinsics_->accel.z[0];
+  } else if (data->flag == 2) {
+    data->gyro[0] -= motion_intrinsics_->gyro.x[1] * temp
+      + motion_intrinsics_->gyro.x[0];
+    data->gyro[1] -= motion_intrinsics_->gyro.y[1] * temp
+      + motion_intrinsics_->gyro.y[0];
+    data->gyro[2] -= motion_intrinsics_->gyro.z[1] * temp
+      + motion_intrinsics_->gyro.z[0];
+  }
+}
+
+void Motions::SetMotionIntrinsics(const std::shared_ptr<MotionIntrinsics>& in) {
+  motion_intrinsics_ = in;
+}
+
+void Motions::EnableProcessMode(const std::int32_t& mode) {
+  proc_mode_ = mode;
+}
+
+bool Motions::IsNullAssemblyOrTempDrift() const {
+  if (!device_info_)
+    return true;
+
+  if (device_info_->spec_version >= Version(1, 2))
+    return false;
+
+  return true;
+}
+
+void Motions::SetDeviceInfo(const std::shared_ptr<DeviceInfo>& in) {
+  device_info_ = in;
 }
 
 MYNTEYE_END_NAMESPACE

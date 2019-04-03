@@ -35,7 +35,14 @@ class PointsProcessorOCV : public Processor {
  protected:
   Object *OnCreateOutput() override;
   bool OnProcess(
-      Object *const in, Object *const out, Processor *const parent) override;
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent) override;
+  // inline Processor::process_type ProcessOutputConnection() override {
+  //   return Processor::WITHOUT_CLONE;
+  // }
+  // inline Processor::process_type ProcessInputConnection() override {
+  //   return Processor::WITHOUT_CLONE;
+  // }
 
  private:
   cv::Mat Q_;

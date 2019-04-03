@@ -53,7 +53,7 @@ struct DepthTraits<float> {
 const char PointsProcessor::NAME[] = "PointsProcessor";
 
 PointsProcessor::PointsProcessor(
-    std::shared_ptr<struct camera_calib_info_pair> calib_infos,
+    std::shared_ptr<struct CameraROSMsgInfoPair> calib_infos,
     std::int32_t proc_period)
     : Processor(std::move(proc_period)),
     calib_infos_(calib_infos) {
@@ -73,7 +73,8 @@ Object *PointsProcessor::OnCreateOutput() {
 }
 
 bool PointsProcessor::OnProcess(
-  Object *const in, Object *const out, Processor *const parent) {
+  Object *const in, Object *const out,
+  std::shared_ptr<Processor> const parent) {
   MYNTEYE_UNUSED(parent)
 
   float fx = calib_infos_->left.K[0];
@@ -104,6 +105,9 @@ bool PointsProcessor::OnProcess(
 
       // Missing points denoted by NaNs
       if (!DepthTraits<uint16_t>::valid(depth)) {
+        dptr[u][0] = 0;
+        dptr[u][1] = 0;
+        dptr[u][2] = 0;
         continue;
       }
       dptr[u][0] = (u - center_x) * depth * constant_x ;

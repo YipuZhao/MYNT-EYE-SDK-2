@@ -279,6 +279,10 @@ class MYNTEYE_API Device {
   std::vector<device::StreamData> GetStreamDatas(const Stream &stream);
 
   /**
+   * Disable cache motion datas.
+   */
+  void DisableMotionDatas();
+  /**
    * Enable cache motion datas.
    */
   void EnableMotionDatas();
@@ -290,6 +294,11 @@ class MYNTEYE_API Device {
    * Get the motion datas.
    */
   std::vector<device::MotionData> GetMotionDatas();
+
+  /** Enable process mode, e.g. imu assembly, temp_drift */
+  void EnableProcessMode(const ProcessMode& mode);
+  /** Enable process mode, e.g. imu assembly, temp_drift */
+  void EnableProcessMode(const std::int32_t& mode);
 
  protected:
   std::shared_ptr<uvc::device> device() const {

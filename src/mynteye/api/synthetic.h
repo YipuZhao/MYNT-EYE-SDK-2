@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "mynteye/api/api.h"
 #include "mynteye/api/config.h"
@@ -28,29 +29,44 @@ MYNTEYE_BEGIN_NAMESPACE
 class API;
 class Plugin;
 class Processor;
+class RootProcessor;
 
 struct Object;
 
 class Synthetic {
  public:
   using stream_callback_t = API::stream_callback_t;
+  using stream_data_listener_t =
+      std::function<void(const Stream &stream, const api::StreamData &data)>;
+  using stream_switch_callback_t = API::stream_switch_callback_t;
 
   typedef enum Mode {
-    MODE_NATIVE,     // Native stream
-    MODE_SYNTHETIC,  // Synthetic stream
-    MODE_LAST        // Unsupported
+    MODE_ON,  // On
+    MODE_OFF  // Off
   } mode_t;
+
+  struct stream_control_t {
+    Stream stream;
+    mode_t enabled_mode_;
+    stream_callback_t stream_callback;
+  };
 
   explicit Synthetic(API *api, CalibrationModel calib_model);
   ~Synthetic();
 
+  void SetStreamDataListener(stream_data_listener_t listener);
+
   void NotifyImageParamsChanged();
 
   bool Supports(const Stream &stream) const;
-  mode_t SupportsMode(const Stream &stream) const;
 
   void EnableStreamData(const Stream &stream);
   void DisableStreamData(const Stream &stream);
+
+  void EnableStreamData(
+      const Stream &stream, stream_switch_callback_t callback, bool try_tag);
+  void DisableStreamData(
+      const Stream &stream, stream_switch_callback_t callback, bool try_tag);
   bool IsStreamDataEnabled(const Stream &stream) const;
 
   void SetStreamCallback(const Stream &stream, stream_callback_t callback);
@@ -67,13 +83,23 @@ class Synthetic {
   void SetPlugin(std::shared_ptr<Plugin> plugin);
   bool HasPlugin() const;
 
+  void setDuplicate(bool isEnable);
+
+  const struct stream_control_t getControlDateWithStream(
+      const Stream& stream) const;
+  void setControlDateCallbackWithStream(
+      const struct stream_control_t& ctr_data);
+  bool checkControlDateWithStream(const Stream& stream) const;
+  std::shared_ptr<Processor> getProcessorWithStream(const Stream& stream);
+  void SetDisparityComputingMethodType(
+      const DisparityComputingMethod &MethoType);
+  std::shared_ptr<struct CameraROSMsgInfoPair> GetCameraROSMsgInfoPair();
+  bool ConfigDisparityFromFile(const std::string& config_file);
+
  private:
   void InitCalibInfo();
-  void InitStreamSupports();
 
   mode_t GetStreamEnabledMode(const Stream &stream) const;
-  bool IsStreamEnabledNative(const Stream &stream) const;
-  bool IsStreamEnabledSynthetic(const Stream &stream) const;
 
   void EnableStreamData(const Stream &stream, std::uint32_t depth);
   void DisableStreamData(const Stream &stream, std::uint32_t depth);
@@ -85,34 +111,38 @@ class Synthetic {
   template <class T>
   bool DeactivateProcessor(bool tree = false);
 
-  void ProcessNativeStream(const Stream &stream, const api::StreamData &data);
-
+  bool OnDeviceProcess(
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent);
   bool OnRectifyProcess(
-      Object *const in, Object *const out, Processor *const parent);
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent);
   bool OnDisparityProcess(
-      Object *const in, Object *const out, Processor *const parent);
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent);
   bool OnDisparityNormalizedProcess(
-      Object *const in, Object *const out, Processor *const parent);
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent);
   bool OnPointsProcess(
-      Object *const in, Object *const out, Processor *const parent);
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent);
   bool OnDepthProcess(
-      Object *const in, Object *const out, Processor *const parent);
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent);
 
+  void OnDevicePostProcess(Object *const out);
   void OnRectifyPostProcess(Object *const out);
   void OnDisparityPostProcess(Object *const out);
   void OnDisparityNormalizedPostProcess(Object *const out);
   void OnPointsPostProcess(Object *const out);
   void OnDepthPostProcess(Object *const out);
 
+  void NotifyStreamData(const Stream &stream, const api::StreamData &data);
+
   API *api_;
 
-  std::map<Stream, mode_t> stream_supports_mode_;
-  std::map<Stream, mode_t> stream_enabled_mode_;
-
-  std::map<Stream, stream_callback_t> stream_callbacks_;
-
-  std::shared_ptr<Processor> processor_;
-
+  std::shared_ptr<RootProcessor> processor_;
+  std::vector<std::shared_ptr<Processor>> processors_;
   std::shared_ptr<Plugin> plugin_;
 
   CalibrationModel calib_model_;
@@ -121,6 +151,23 @@ class Synthetic {
   std::shared_ptr<IntrinsicsBase> intr_right_;
   std::shared_ptr<Extrinsics> extr_;
   bool calib_default_tag_;
+
+  stream_data_listener_t stream_data_listener_;
+};
+
+class SyntheticProcessorPart {
+ protected:
+  inline std::vector<Synthetic::stream_control_t> getTargetStreams() {
+    return target_streams_;
+  }
+  inline void addTargetStreams(const Synthetic::stream_control_t& strm) {
+    target_streams_.push_back(strm);
+  }
+
+  std::vector<Synthetic::stream_control_t> target_streams_;
+
+  inline unsigned int getStreamsSum() {return target_streams_.size();}
+  friend Synthetic;
 };
 
 template <class T, class P>
@@ -181,3 +228,4 @@ bool Synthetic::DeactivateProcessor(bool childs) {
 MYNTEYE_END_NAMESPACE
 
 #endif  // MYNTEYE_API_SYNTHETIC_H_
+

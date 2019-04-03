@@ -92,6 +92,8 @@ const char *to_string(const Info &value) {
     CASE(LENS_TYPE)
     CASE(IMU_TYPE)
     CASE(NOMINAL_BASELINE)
+    CASE(AUXILIARY_CHIP_VERSION)
+    CASE(ISP_VERSION)
     default:
       CHECK(is_valid(value));
       return "Info::UNKNOWN";
@@ -120,6 +122,7 @@ const char *to_string(const Option &value) {
     CASE(GYROSCOPE_RANGE)
     CASE(ACCELEROMETER_LOW_PASS_FILTER)
     CASE(GYROSCOPE_LOW_PASS_FILTER)
+    CASE(IIC_ADDRESS_SETTING)
     CASE(ZERO_DRIFT_CALIBRATION)
     CASE(ERASE_CHIP)
     default:
@@ -164,6 +167,7 @@ const char *to_string(const Format &value) {
     CASE(GREY)
     CASE(YUYV)
     CASE(BGR888)
+    CASE(RGB888)
     default:
       return "Format::UNKNOWN";
   }
@@ -243,6 +247,15 @@ std::ostream &operator<<(std::ostream &os, const ImuIntrinsics &in) {
     os << in.scale[2][i] << ", ";
   os << in.scale[2][2] << "]";
 
+  os << ", assembly: [";
+  for (int i = 0; i <= 2; i++)
+    os << in.assembly[0][i] << ", ";
+  for (int i = 0; i <= 2; i++)
+    os << in.assembly[1][i] << ", ";
+  for (int i = 0; i <= 1; i++)
+    os << in.assembly[2][i] << ", ";
+  os << in.assembly[2][2] << "]";
+
   os << ", drift: [";
   for (int i = 0; i <= 1; i++)
     os << in.drift[i] << ", ";
@@ -257,6 +270,21 @@ std::ostream &operator<<(std::ostream &os, const ImuIntrinsics &in) {
   for (int i = 0; i <= 1; i++)
     os << in.bias[i] << ", ";
   os << in.bias[2] << "]";
+
+  os << ", x: [";
+  for (int i = 0; i <= 0; i++)
+    os << in.x[i] << ", ";
+  os << in.x[1] << "]";
+
+  os << ", y: [";
+  for (int i = 0; i <= 0; i++)
+    os << in.y[i] << ", ";
+  os << in.y[1] << "]";
+
+  os << ", z: [";
+  for (int i = 0; i <= 0; i++)
+    os << in.z[i] << ", ";
+  os << in.z[1] << "]";
 
   return os;
 }
@@ -287,6 +315,40 @@ std::ostream &operator<<(std::ostream &os, const Extrinsics &ex) {
 std::ostream &operator<<(std::ostream &os, const OptionInfo &info) {
   return os << "min: " << info.min << ", max: " << info.max
             << ", def: " << info.def;
+}
+
+std::ostream &operator<<(std::ostream &os, const CameraROSMsgInfo &info) {
+  os << "width: " << info.width << ", height: " << info.height << std::endl
+      << "distortion_model: " << info.distortion_model;
+  os << std::endl << "D: ";
+  for (size_t i = 0; i < 5; i++)
+    os << info.D[i] << ",";
+  os << std::endl << "K: ";
+  for (size_t i = 0; i < 9; i++)
+    os << info.K[i] << ",";
+  os << std::endl << "R: ";
+  for (size_t i = 0; i < 9; i++)
+    os << info.R[i] << ",";
+  os << std::endl << "P: ";
+  for (size_t i = 0; i < 12; i++)
+    os << info.P[i] << ",";
+  os << std::endl;
+
+  return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const CameraROSMsgInfoPair &info) {
+  os << "left:\n" << info.left << std::endl;
+  os << "right:\n" << info.right << std::endl;
+  os << "base R:";
+  for (size_t i = 0; i < 9; i++)
+    os << info.R[i] << ",";
+  os << std::endl << "base P:";
+  for (size_t i = 0; i < 12; i++)
+    os << info.P[i] << ",";
+  os << std::endl;
+
+  return os;
 }
 
 MYNTEYE_END_NAMESPACE

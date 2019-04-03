@@ -32,7 +32,8 @@ struct ImagePacket {
   std::uint64_t timestamp;
   std::uint16_t exposure_time;
   std::uint8_t checksum;
-
+  // Is external time source
+  bool is_ets;
   ImagePacket() = default;
   explicit ImagePacket(std::uint8_t *data) {
     from_data(data);
@@ -41,8 +42,8 @@ struct ImagePacket {
   void from_data(std::uint8_t *data) {
     std::uint32_t timestamp_l;
     std::uint32_t timestamp_h;
-
-    header = *data;
+    header = *data & 0x7F;
+    is_ets = ((*data & 0x80) == 0x80);
     size = *(data + 1);
     frame_id = (*(data + 2) << 8) | *(data + 3);
     timestamp_h = (*(data + 4) << 24) | (*(data + 5) << 16) |
@@ -120,12 +121,12 @@ bool unpack_stereo_img_data(
             << static_cast<int>(img_packet.header) << " now";
     return false;
   }
-
+/*
   std::uint8_t checksum = 0;
   for (std::size_t i = 2, n = packet_n - 2; i <= n; i++) {  // content: [2,9]
     checksum = (checksum ^ packet[i]);
   }
-/*
+
   if (img_packet.checksum != checksum) {
     VLOG(2) << "Image packet checksum should be 0x" << std::hex
             << std::uppercase << std::setw(2) << std::setfill('0')
@@ -138,12 +139,64 @@ bool unpack_stereo_img_data(
   img->frame_id = img_packet.frame_id;
   img->timestamp = img_packet.timestamp;
   img->exposure_time = img_packet.exposure_time;
+  img->is_ets = img_packet.is_ets;
   return true;
 }
 
 }  // namespace
 
-Standard2StreamsAdapter::Standard2StreamsAdapter() {
+namespace s210a {
+
+// image pixels
+
+bool unpack_left_img_pixels(
+    const void *data, const StreamRequest &request, Streams::frame_t *frame) {
+  CHECK_NOTNULL(frame);
+  CHECK_EQ(request.format, Format::BGR888);
+  CHECK_EQ(frame->format(), Format::BGR888);
+  auto data_new = reinterpret_cast<const std::uint8_t *>(data);
+  std::size_t n = 3;
+  std::size_t w = frame->width();
+  std::size_t h = frame->height();
+  for (std::size_t i = 0; i < h; i++) {
+    for (std::size_t j = 0; j < w; j++) {
+      frame->data()[(i * w + j) * n] =
+        *(data_new + (2 * i * w + j) * n + 2);
+      frame->data()[(i * w + j) * n + 1] =
+        *(data_new + (2 * i * w + j) * n + 1);
+      frame->data()[(i * w + j) * n + 2] =
+        *(data_new + (2 * i * w + j) * n);
+    }
+  }
+  return true;
+}
+
+bool unpack_right_img_pixels(
+    const void *data, const StreamRequest &request, Streams::frame_t *frame) {
+  CHECK_NOTNULL(frame);
+  CHECK_EQ(request.format, Format::BGR888);
+  CHECK_EQ(frame->format(), Format::BGR888);
+  auto data_new = reinterpret_cast<const std::uint8_t *>(data);
+  std::size_t n = 3;
+  std::size_t w = frame->width();
+  std::size_t h = frame->height();
+  for (std::size_t i = 0; i < h; i++) {
+    for (std::size_t j = 0; j < w; j++) {
+      frame->data()[(i * w + j) * n] =
+        *(data_new + ((2 * i + 1) * w + j) * n + 2);
+      frame->data()[(i * w + j) * n + 1] =
+        *(data_new + ((2 * i + 1) * w + j) * n + 1);
+      frame->data()[(i * w + j) * n + 2] =
+        *(data_new + ((2 * i + 1) * w + j) * n);
+    }
+  }
+  return true;
+}
+
+}  // namespace s210a
+
+Standard2StreamsAdapter::Standard2StreamsAdapter(const Model &model)
+  : model_(model) {
 }
 
 Standard2StreamsAdapter::~Standard2StreamsAdapter() {
@@ -167,10 +220,19 @@ Standard2StreamsAdapter::GetUnpackImgDataMap() {
 
 std::map<Stream, Streams::unpack_img_pixels_t>
 Standard2StreamsAdapter::GetUnpackImgPixelsMap() {
-  return {
-    {Stream::LEFT, unpack_left_img_pixels},
-    {Stream::RIGHT, unpack_right_img_pixels}
-  };
+  switch (model_) {
+    case Model::STANDARD210A:
+      return {
+        {Stream::LEFT, s210a::unpack_left_img_pixels},
+        {Stream::RIGHT, s210a::unpack_right_img_pixels}
+      };
+    case Model::STANDARD2:
+    default:
+      return {
+        {Stream::LEFT, unpack_left_img_pixels},
+        {Stream::RIGHT, unpack_right_img_pixels}
+      };
+  }
 }
 
 MYNTEYE_END_NAMESPACE

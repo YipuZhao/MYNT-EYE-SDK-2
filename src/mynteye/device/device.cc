@@ -26,7 +26,6 @@
 #include "mynteye/device/motions.h"
 #include "mynteye/device/standard/device_s.h"
 #include "mynteye/device/standard2/device_s2.h"
-#include "mynteye/device/standard2/device_s210a.h"
 #include "mynteye/device/streams.h"
 #include "mynteye/device/types.h"
 #include "mynteye/util/strings.h"
@@ -104,7 +103,6 @@ std::shared_ptr<Device> Device::Create(
   if (name == "MYNTEYE") {
     return std::make_shared<StandardDevice>(device);
   } else if (strings::starts_with(name, "MYNT-EYE-")) {
-    // TODO(JohnZhao): Create different device by name, such as MYNT-EYE-S1000
     std::string model_s = name.substr(9, 5);
     VLOG(2) << "MYNE EYE Model: " << model_s;
     DeviceModel model(model_s);
@@ -113,9 +111,9 @@ std::shared_ptr<Device> Device::Create(
         return std::make_shared<StandardDevice>(device);
       } else if (model.generation == '2') {
         if (model.custom_code == '0') {
-          return std::make_shared<Standard2Device>(device);
+          return std::make_shared<Standard2Device>(Model::STANDARD2, device);
         } else if (model.custom_code == 'A') {
-          return std::make_shared<Standard210aDevice>(device);
+          return std::make_shared<Standard2Device>(Model::STANDARD210A, device);
         } else {
           LOG(FATAL) << "No such custom code now";
         }
@@ -234,6 +232,10 @@ std::string Device::GetInfo(const Info &info) const {
       return device_info_->imu_type.to_string();
     case Info::NOMINAL_BASELINE:
       return std::to_string(device_info_->nominal_baseline);
+    case Info::AUXILIARY_CHIP_VERSION:
+      return device_info_->auxiliary_chip_version.to_string();
+    case Info::ISP_VERSION:
+      return device_info_->isp_version.to_string();
     default:
       LOG(WARNING) << "Unknown device info";
       return "";
@@ -328,6 +330,7 @@ void Device::SetMotionIntrinsics(const MotionIntrinsics &in) {
     motion_intrinsics_ = std::make_shared<MotionIntrinsics>();
   }
   *motion_intrinsics_ = in;
+  motions_->SetMotionIntrinsics(motion_intrinsics_);
 }
 
 void Device::SetMotionExtrinsics(const Stream &from, const Extrinsics &ex) {
@@ -349,6 +352,9 @@ OptionInfo Device::GetOptionInfo(const Option &option) const {
 
 std::int32_t Device::GetOptionValue(const Option &option) const {
   if (!Supports(option)) {
+    if (option == Option::FRAME_RATE) {
+      return GetStreamRequest().fps;
+    }
     LOG(WARNING) << "Unsupported option: " << option;
     return -1;
   }
@@ -464,6 +470,11 @@ std::vector<device::StreamData> Device::GetStreamDatas(const Stream &stream) {
   CheckSupports(this, stream);
   std::lock_guard<std::mutex> _(mtx_streams_);
   return streams_->GetStreamDatas(stream);
+}
+
+void Device::DisableMotionDatas() {
+  CHECK_NOTNULL(motions_);
+  motions_->DisableMotionDatas();
 }
 
 void Device::EnableMotionDatas() {
@@ -599,6 +610,8 @@ void Device::ReadAllInfos() {
 
   device_info_->name = uvc::get_name(*device_);
 
+  motions_->SetDeviceInfo(device_info_);
+
   bool img_params_ok = false;
   for (auto &&params : all_img_params_) {
     auto &&img_params = params.second;
@@ -606,9 +619,9 @@ void Device::ReadAllInfos() {
       img_params_ok = true;
       SetIntrinsics(Stream::LEFT, img_params.in_left);
       SetIntrinsics(Stream::RIGHT, img_params.in_right);
-      SetExtrinsics(Stream::LEFT, Stream::RIGHT, img_params.ex_right_to_left);
-      VLOG(2) << "Intrinsics left: {" << GetIntrinsics(Stream::LEFT) << "}";
-      VLOG(2) << "Intrinsics right: {" << GetIntrinsics(Stream::RIGHT) << "}";
+      SetExtrinsics(Stream::RIGHT, Stream::LEFT, img_params.ex_right_to_left);
+      VLOG(2) << "Intrinsics left: {" << *GetIntrinsics(Stream::LEFT) << "}";
+      VLOG(2) << "Intrinsics right: {" << *GetIntrinsics(Stream::RIGHT) << "}";
       VLOG(2) << "Extrinsics left to right: {"
               << GetExtrinsics(Stream::LEFT, Stream::RIGHT) << "}";
       break;
@@ -646,14 +659,25 @@ void Device::UpdateStreamIntrinsics(
             img_res.height == request.GetResolution().height &&
             img_res.width == request.GetResolution().width / 2;
     } else if (capability == Capabilities::STEREO) {
-      ok = img_params.ok && img_res == request.GetResolution();
+      if (img_res == request.GetResolution()) {
+        ok = img_params.ok;
+      } else if (request.GetResolution().height / img_res.height ==
+                request.GetResolution().width / img_res.width) {
+        double scale = static_cast<double> (
+          1.0 * request.GetResolution().height / img_res.height);
+        img_params.in_left->resize_scale = scale;
+        img_params.in_right->resize_scale = scale;
+        ok = img_params.ok;
+      } else {
+        ok = false;
+      }
     }
     if (ok) {
       SetIntrinsics(Stream::LEFT, img_params.in_left);
       SetIntrinsics(Stream::RIGHT, img_params.in_right);
       SetExtrinsics(Stream::LEFT, Stream::RIGHT, img_params.ex_right_to_left);
-      VLOG(2) << "Intrinsics left: {" << GetIntrinsics(Stream::LEFT) << "}";
-      VLOG(2) << "Intrinsics right: {" << GetIntrinsics(Stream::RIGHT) << "}";
+      VLOG(2) << "Intrinsics left: {" << *GetIntrinsics(Stream::LEFT) << "}";
+      VLOG(2) << "Intrinsics right: {" << *GetIntrinsics(Stream::RIGHT) << "}";
       VLOG(2) << "Extrinsics left to right: {"
               << GetExtrinsics(Stream::LEFT, Stream::RIGHT) << "}";
       break;
@@ -692,6 +716,14 @@ bool Device::GetFiles(
 bool Device::SetFiles(
     DeviceInfo *info, img_params_map_t *img_params, imu_params_t *imu_params) {
   return channels_->SetFiles(info, img_params, imu_params);
+}
+
+void Device::EnableProcessMode(const ProcessMode& mode) {
+  EnableProcessMode(static_cast<std::int32_t>(mode));
+}
+
+void Device::EnableProcessMode(const std::int32_t& mode) {
+  motions_->EnableProcessMode(mode);
 }
 
 MYNTEYE_END_NAMESPACE

@@ -52,7 +52,11 @@ bool DeviceWriter::WriteDeviceInfo(const dev_info_t &info) {
               << ", spec_version: " << dev_info->spec_version.to_string()
               << ", lens_type: " << dev_info->lens_type.to_string()
               << ", imu_type: " << dev_info->imu_type.to_string()
-              << ", nominal_baseline: " << dev_info->nominal_baseline << "}";
+              << ", nominal_baseline: " << dev_info->nominal_baseline
+              << ", auxiliary_chip_version: "
+              << dev_info->auxiliary_chip_version.to_string()
+              << ", isp_version: "
+              << dev_info->isp_version.to_string()<< "}";
     return true;
   } else {
     LOG(ERROR) << "Write device info failed";
@@ -153,11 +157,20 @@ cv::FileStorage &operator<<(cv::FileStorage &fs, const ImuIntrinsics &in) {
       scales.push_back(in.scale[i][j]);
     }
   }
+  std::vector<double> assembly;
+  for (std::size_t i = 0; i < 3; i++) {
+    for (std::size_t j = 0; j < 3; j++) {
+      assembly.push_back(in.assembly[i][j]);
+    }
+  }
   fs << "{"
-     << "scale" << scales << "drift"
+     << "scale" << scales << "assembly" << assembly << "drift"
      << std::vector<double>(in.drift, in.drift + 3) << "noise"
      << std::vector<double>(in.noise, in.noise + 3) << "bias"
-     << std::vector<double>(in.bias, in.bias + 3) << "}";
+     << std::vector<double>(in.bias, in.bias + 3) << "x"
+     << std::vector<double>(in.x, in.x + 2) << "y"
+     << std::vector<double>(in.y, in.y + 2) << "z"
+     << std::vector<double>(in.z, in.z + 2) << "}";
   return fs;
 }
 
@@ -215,6 +228,8 @@ bool DeviceWriter::SaveDeviceInfo(
   fs << "lens_type" << info.lens_type.to_string();
   fs << "imu_type" << info.imu_type.to_string();
   fs << "nominal_baseline" << info.nominal_baseline;
+  fs << "auxiliary_chip_version" << info.auxiliary_chip_version.to_string();
+  fs << "isp_version" << info.isp_version.to_string();
   // save other infos according to spec_version
   fs.release();
   return true;
@@ -338,6 +353,11 @@ void operator>>(const cv::FileNode &n, ImuIntrinsics &in) {
     }
   }
   for (std::size_t i = 0; i < 3; i++) {
+    for (std::size_t j = 0; j < 3; j++) {
+      in.assembly[i][j] = n["assembly"][3 * i + j];
+    }
+  }
+  for (std::size_t i = 0; i < 3; i++) {
     in.drift[i] = n["drift"][i];
   }
   for (std::size_t i = 0; i < 3; i++) {
@@ -345,6 +365,15 @@ void operator>>(const cv::FileNode &n, ImuIntrinsics &in) {
   }
   for (std::size_t i = 0; i < 3; i++) {
     in.bias[i] = n["bias"][i];
+  }
+  for (std::size_t i = 0; i < 2; i++) {
+    in.x[i] = n["x"][i];
+  }
+  for (std::size_t i = 0; i < 2; i++) {
+    in.y[i] = n["y"][i];
+  }
+  for (std::size_t i = 0; i < 2; i++) {
+    in.z[i] = n["z"][i];
   }
 }
 

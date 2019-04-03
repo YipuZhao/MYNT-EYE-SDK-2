@@ -40,6 +40,14 @@ class RectifyProcessorOCV : public Processor {
 
   std::string Name() override;
 
+  inline std::shared_ptr<struct CameraROSMsgInfoPair>
+      getCameraROSMsgInfoPair() {
+    return calib_infos;
+  }
+
+  struct CameraROSMsgInfo getCalibMatData(
+    const mynteye::IntrinsicsPinhole& in);
+
   void ReloadImageParams(
       std::shared_ptr<IntrinsicsBase> intr_left,
       std::shared_ptr<IntrinsicsBase> intr_right,
@@ -49,15 +57,25 @@ class RectifyProcessorOCV : public Processor {
   cv::Mat map11, map12, map21, map22;
 
  protected:
+  // inline Processor::process_type ProcessOutputConnection() override {
+  //   return Processor::WITHOUT_CLONE;
+  // }
+  // inline Processor::process_type ProcessInputConnection() override {
+  //   return Processor::WITHOUT_CLONE;
+  // }
+
   Object *OnCreateOutput() override;
   bool OnProcess(
-      Object *const in, Object *const out, Processor *const parent) override;
+      Object *const in, Object *const out,
+      std::shared_ptr<Processor> const parent) override;
 
  private:
   void InitParams(IntrinsicsPinhole in_left,
         IntrinsicsPinhole in_right, Extrinsics ex_right_to_left);
 
   CalibrationModel calib_model;
+
+  std::shared_ptr<struct CameraROSMsgInfoPair> calib_infos;
 };
 
 MYNTEYE_END_NAMESPACE

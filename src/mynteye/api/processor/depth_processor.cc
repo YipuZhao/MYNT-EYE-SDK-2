@@ -25,7 +25,7 @@ const int DISPARITY_MIN = 0;
 const int DISPARITY_MAX = 64;
 
 DepthProcessor::DepthProcessor(
-    std::shared_ptr<struct camera_calib_info_pair> calib_infos,
+    std::shared_ptr<struct CameraROSMsgInfoPair> calib_infos,
     std::int32_t proc_period)
     : Processor(std::move(proc_period)),
     calib_infos_(calib_infos) {
@@ -45,7 +45,8 @@ Object *DepthProcessor::OnCreateOutput() {
 }
 
 bool DepthProcessor::OnProcess(
-    Object *const in, Object *const out, Processor *const parent) {
+    Object *const in, Object *const out,
+    std::shared_ptr<Processor> const parent) {
   MYNTEYE_UNUSED(parent)
   const ObjMat *input = Object::Cast<ObjMat>(in);
   ObjMat *output = Object::Cast<ObjMat>(out);

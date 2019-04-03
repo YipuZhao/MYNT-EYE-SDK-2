@@ -34,12 +34,7 @@ SUDO ?= sudo
 
 CAM_MODELS ?=
 
-CMAKE_BUILD_EXTRA_OPTIONS :=
-ifeq ($(CAM_MODELS),)
-	CMAKE_BUILD_EXTRA_OPTIONS := $(CMAKE_BUILD_EXTRA_OPTIONS) -DWITH_CAM_MODELS=OFF
-else
-	CMAKE_BUILD_EXTRA_OPTIONS := $(CMAKE_BUILD_EXTRA_OPTIONS) -DWITH_CAM_MODELS=ON
-endif
+CMAKE_BUILD_EXTRA_OPTIONS := $(CMAKE_BUILD_EXTRA_OPTIONS) -DWITH_CAM_MODELS=ON
 
 .DEFAULT_GOAL := all
 
@@ -67,24 +62,21 @@ all: init samples tools ros
 
 # doc
 
-apidoc:
+doc: apidoc
+
+apidoc: cleandoc
 	@$(call echo,Make $@)
-	@# @[ -e ./_install/include ] || $(MAKE) install
-	@[ -e /usr/local/include/mynteye ] || $(MAKE) install
-	@$(SH) ./doc/build.sh
+	@cd docs; make html
 
 opendoc: apidoc
 	@$(call echo,Make $@)
-	@$(shell $(SH) ./doc/langs.sh 1); \
-	for lang in "$${LANGS[@]}"; do \
-		html=./doc/_output/$$lang/html/index.html; \
-		[ -f "$$html" ] && $(SH) ./scripts/open.sh $$html; \
-	done
+	@$(SH) ./scripts/open.sh docs/_build/html/index.html
 
 cleandoc:
-	@$(call rm,./doc/_output/)
+	@$(call rm,./docs/_build/)
+	@$(call rm,./docs/_doxygen/)
 
-.PHONY: apidoc opendoc cleandoc
+.PHONY: doc apidoc opendoc cleandoc
 
 # deps
 
@@ -92,18 +84,6 @@ submodules:
 	@git submodule update --init
 
 .PHONY: submodules
-
-# 3rdparty
-
-ceres:
-	@$(call echo,Make $@)
-	@$(call cmake_build,./3rdparty/ceres-solver-1.11.0/_build,.., \
-		-DCMAKE_INSTALL_PREFIX=$(MKFILE_DIR)/3rdparty/ceres \
-		-DGFLAGS_PREFER_EXPORTED_GFLAGS_CMAKE_CONFIGURATION=OFF \
-		-DMINIGLOG=ON)
-	@cd ./3rdparty/ceres-solver-1.11.0/_build; make install
-
-.PHONY: ceres
 
 # init
 
@@ -117,11 +97,8 @@ init:
 
 build:
 	@$(call echo,Make $@)
-ifneq ($(CAM_MODELS),)
-	@$(MAKE) ceres
-endif
 ifeq ($(HOST_OS),Win)
-	@$(call cmake_build,./_build,..,-DCMAKE_INSTALL_PREFIX=$(MKFILE_DIR)/_install)
+	@$(call cmake_build,./_build,..,-DCMAKE_INSTALL_PREFIX=$(MKFILE_DIR)/_install $(CMAKE_BUILD_EXTRA_OPTIONS))
 else
 	@$(call cmake_build,./_build,..,$(CMAKE_BUILD_EXTRA_OPTIONS))
 endif
@@ -150,7 +127,7 @@ endif
 
 # install
 
-install: build
+install: uninstall build
 	@$(call echo,Make $@)
 ifeq ($(HOST_OS),Win)
 ifneq ($(HOST_NAME),MinGW)
@@ -191,7 +168,13 @@ samples: install
 
 tools: install
 	@$(call echo,Make $@)
+ifeq ($(HOST_OS),Mac)
+	$(error "Can't make tools on $(HOST_OS)")
+else
 	@$(call cmake_build,./tools/_build)
+endif
+
+
 
 .PHONY: tools
 
@@ -301,7 +284,6 @@ cleanlog:
 	@$(call rm_f,*FATAL*)
 
 cleanall: clean cleandoc
-	@$(call rm,./3rdparty/ceres-solver-1.11.0/_build/)
 	@$(call rm,./test/gtest/_build/)
 	@$(FIND) . -type f -name ".DS_Store" -print0 | xargs -0 rm -f
 	@$(call rm,./$(PBCVT_DIR)/)

@@ -105,6 +105,10 @@ if(PCL_FOUND)
     WITH_OPENCV WITH_PCL
   )
 endif()
+make_executable2(get_imu_correspondence
+  SRCS data/get_imu_correspondence.cc util/cv_painter.cc
+  WITH_OPENCV
+)
 make_executable2(get_imu SRCS data/get_imu.cc util/cv_painter.cc WITH_OPENCV)
 make_executable2(get_from_callbacks
   SRCS data/get_from_callbacks.cc util/cv_painter.cc
@@ -118,6 +122,7 @@ make_executable2(ctrl_framerate SRCS control/framerate.cc WITH_OPENCV)
 make_executable2(ctrl_imu_low_pass_filter SRCS control/imu_low_pass_filter.cc WITH_OPENCV)
 make_executable2(ctrl_imu_range SRCS control/imu_range.cc WITH_OPENCV)
 make_executable2(ctrl_infrared SRCS control/infrared.cc WITH_OPENCV)
+make_executable2(ctrl_iic_adress SRCS control/iic_address.cc WITH_OPENCV)
 make_executable2(ctrl_auto_exposure
   SRCS control/auto_exposure.cc util/cv_painter.cc
   WITH_OPENCV
@@ -129,14 +134,10 @@ make_executable2(ctrl_manual_exposure
 
 if(PCL_FOUND)
 
-if(OpenCV_VERSION VERSION_LESS 4.0)
-
 make_executable2(get_depth_and_points
   SRCS intermediate/get_depth_and_points.cc util/cv_painter.cc util/pc_viewer.cc
   WITH_OPENCV WITH_PCL
 )
-
-endif()
 
 endif()
 
